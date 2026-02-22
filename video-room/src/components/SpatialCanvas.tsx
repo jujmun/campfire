@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { realtime } from '../lib/realtime'
+import { setPeerPosition } from '../lib/audioSpatializer'
 import { Avatar } from './Avatar'
 import type { SpatialParticipant } from '../types'
 import type { MoveEvent } from '../lib/realtimeStub'
 
 const CANVAS_W = 700
 const CANVAS_H = 1600
-const AVATAR_R = 48
+const AVATAR_R = 96
 const MOVE_RATE = 4
 const SEND_INTERVAL_MS = 1000 / 15 // 15Hz
 const ENTER_RADIUS = 120
@@ -208,6 +209,7 @@ export function SpatialCanvas({
     const interpolate = () => {
       const updated = new Map(participants)
       let changed = false
+      const local = participants.get(localUserId)
       remoteTargets.current.forEach((target, userId) => {
         if (userId === localUserId) return
         const p = updated.get(userId)
@@ -221,6 +223,11 @@ export function SpatialCanvas({
         }
       })
       if (changed) onParticipantsChange(updated)
+      if (local) {
+        participants.forEach((p, userId) => {
+          if (userId !== localUserId) setPeerPosition(userId, local.x, local.y, p.x, p.y)
+        })
+      }
       raf = requestAnimationFrame(interpolate)
     }
     raf = requestAnimationFrame(interpolate)

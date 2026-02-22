@@ -1,11 +1,14 @@
 /**
  * Campfire WebSocket server.
  * Accepts connections, routes events by roomId, broadcasts to all clients in room.
+ * WebRTC signaling events (WEBRTC_OFFER, WEBRTC_ANSWER, WEBRTC_ICE_CANDIDATE) are
+ * unicast to the target peer (toId) instead of broadcast.
  *
  * Protocol:
  * - Client sends { type: 'subscribe', roomId } to join a room
  * - Client sends { type: 'event', event } to broadcast an event to room
  * - Server sends { type: 'event', event } to all clients subscribed to that room
+ * - WebRTC events with toId are sent only to the client whose userId matches toId
  *
  * HTTP GET / or /health returns 200 for platform health checks (Railway, Render).
  */
@@ -29,6 +32,13 @@ const wss = new WebSocketServer({ server: httpServer })
 /** Map roomId -> Set of WebSocket clients */
 const rooms = new Map()
 
+/** WebRTC signaling events that should be unicast to toId */
+const WEBRTC_UNICAST_TYPES = new Set([
+  'WEBRTC_OFFER',
+  'WEBRTC_ANSWER',
+  'WEBRTC_ICE_CANDIDATE',
+])
+
 function getRoom(roomId) {
   let set = rooms.get(roomId)
   if (!set) {
@@ -46,14 +56,34 @@ function subscribe(client, roomId) {
 
 function unsubscribe(client) {
   if (!client.rooms) return
+  const userId = client.userId
   for (const roomId of client.rooms) {
     const room = rooms.get(roomId)
     if (room) {
       room.delete(client)
+      // Broadcast USER_LEFT so others can clean up (WebRTC, participants)
+      if (userId) {
+        const payload = JSON.stringify({
+          type: 'event',
+          event: { type: 'USER_LEFT', roomId, userId, timestamp: Date.now() },
+        })
+        for (const c of room) {
+          if (c.readyState === 1) c.send(payload)
+        }
+      }
       if (room.size === 0) rooms.delete(roomId)
     }
   }
   client.rooms.clear()
+  client.userId = undefined
+}
+
+/** Find client in room whose userId matches targetId */
+function findClientByUserId(room, targetId) {
+  for (const client of room) {
+    if (client.userId === targetId && client.readyState === 1) return client
+  }
+  return null
 }
 
 wss.on('connection', (ws) => {
@@ -68,9 +98,23 @@ wss.on('connection', (ws) => {
         if (!roomId) return
         const room = rooms.get(roomId)
         if (!room) return
+
+        // Associate userId with this client when we see JOIN_ROOM
+        if (ev.type === 'JOIN_ROOM' && ev.userId) {
+          ws.userId = ev.userId
+        }
+
         const payload = JSON.stringify({ type: 'event', event: ev })
-        for (const client of room) {
-          if (client.readyState === 1) client.send(payload)
+
+        // WebRTC signaling: unicast to target peer
+        if (WEBRTC_UNICAST_TYPES.has(ev.type) && ev.toId) {
+          const target = findClientByUserId(room, ev.toId)
+          if (target) target.send(payload)
+        } else {
+          // Broadcast to all in room
+          for (const client of room) {
+            if (client.readyState === 1) client.send(payload)
+          }
         }
       }
     } catch {

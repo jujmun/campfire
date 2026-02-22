@@ -15,9 +15,9 @@ This guide walks through deploying Campfire so others can join rooms over the in
 - Whiteboard strokes (shared + personal)
 - Proximity events, personal whiteboard sharing
 
-## What Does Not Sync (No WebRTC Yet)
+## What Syncs via WebRTC (when using WebSocket)
 
-- Video/audio streams — each user sees only their own camera. Remote participants appear as avatars without video/audio.
+- Video/audio streams — real P2P video and audio between participants. Uses STUN (stun.l.google.com). TURN can be added for restrictive NATs.
 
 ---
 
@@ -107,7 +107,7 @@ Output is in `dist/`.
 | Open room URL in two different browsers/devices | Both should see each other's avatars |
 | Move avatar in one tab | Other tab sees movement |
 | Draw on whiteboard | Strokes sync to other tab |
-| Camera/mic permission | Works over HTTPS; each user sees only their own video |
+| Camera/mic permission | Works over HTTPS; video/audio shared via WebRTC |
 | Copy room link | Share `https://your-app.com/room/demo` (or custom room ID) |
 
 ---
@@ -116,4 +116,4 @@ Output is in `dist/`.
 
 - **No auth** — Anyone with the room URL can join. Consider adding auth/tokens for production.
 - **Ephemeral rooms** — Rooms exist only in memory; restarting the ws-server clears them.
-- **Video/audio** — Not shared between users yet; would require WebRTC/SFU integration.
+- **WebRTC** — P2P video/audio works with 2–4 users. For 5+ participants, consider an SFU (e.g. mediasoup, LiveKit).

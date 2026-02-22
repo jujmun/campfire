@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import QRCode from 'qrcode'
 
 interface IpadConnectModalProps {
   roomId: string
@@ -15,11 +16,13 @@ function generateToken(): string {
 export function IpadConnectModal({ roomId, onClose }: IpadConnectModalProps) {
   const [token] = useState(() => generateToken())
   const [copied, setCopied] = useState(false)
-  const baseUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname.replace(/\/$/, '')}`
-      : ''
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
   const ipadUrl = `${baseUrl}/ipad?token=${token}&room=${roomId}`
+
+  const [qrDataUrl, setQrDataUrl] = useState<string>('')
+  useEffect(() => {
+    QRCode.toDataURL(ipadUrl, { width: 200, margin: 2 }).then(setQrDataUrl).catch(() => {})
+  }, [ipadUrl])
 
   const copyUrl = useCallback(async () => {
     try {
@@ -78,8 +81,8 @@ export function IpadConnectModal({ roomId, onClose }: IpadConnectModalProps) {
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
-        <div className="ipad-qr-placeholder" aria-hidden="true">
-          [QR: {ipadUrl}]
+        <div className="ipad-qr-wrap" aria-hidden="true">
+          {qrDataUrl ? <img src={qrDataUrl} alt="" className="ipad-qr-code" /> : null}
         </div>
         <p className="ipad-hint">
           For demo: open this URL in another tab or on a device on the same network.

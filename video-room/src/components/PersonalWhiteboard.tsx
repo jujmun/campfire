@@ -19,6 +19,7 @@ const PW_W = 320
 const PW_H = 240
 const BATCH_MS = 30
 const BATCH_MAX = 12
+const STORAGE_KEY = 'campfire-personal-whiteboard'
 
 export type PersonalWbPermissionMode = 'view-only' | 'collaborative'
 
@@ -63,7 +64,7 @@ export const PersonalWhiteboard = forwardRef<PersonalWhiteboardHandle, PersonalW
       ownerId,
       ownerName: _ownerName,
       isOpen,
-      onClose,
+      onClose: _onClose,
       autoShare,
       onAutoShareChange,
       permissionMode,
@@ -126,6 +127,42 @@ export const PersonalWhiteboard = forwardRef<PersonalWhiteboardHandle, PersonalW
       [redrawAll]
     )
 
+    const saveToStorage = useCallback(() => {
+      try {
+        const data = {
+          strokes: Object.fromEntries(
+            Array.from(strokesRef.current.entries()).map(([id, s]) => [
+              id,
+              { points: s.points, color: s.color, width: s.width },
+            ])
+          ),
+          order: strokeOrderRef.current,
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      } catch {
+        /* ignore */
+      }
+    }, [])
+
+    const loadFromStorage = useCallback(() => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (!raw) return
+        const data = JSON.parse(raw) as {
+          strokes: Record<string, { points: StrokePoint[]; color: string; width: number }>
+          order: string[]
+        }
+        strokesRef.current.clear()
+        Object.entries(data.strokes || {}).forEach(([id, s]) => {
+          strokesRef.current.set(id, { ...s, points: s.points || [] })
+        })
+        strokeOrderRef.current = data.order || []
+        redrawAll()
+      } catch {
+        /* ignore */
+      }
+    }, [redrawAll])
+
     useImperativeHandle(ref, () => ({
       getStrokes: () => new Map(strokesRef.current),
     }))
@@ -134,6 +171,7 @@ export const PersonalWhiteboard = forwardRef<PersonalWhiteboardHandle, PersonalW
       if (bufferRef.current.length === 0 || !currentStrokeRef.current) return
       const points = smoothPoints([...bufferRef.current])
       addStrokePoints(currentStrokeRef.current, points)
+      saveToStorage()
       if (isSharing) {
         realtime.send(roomId, {
           type: 'PERSONAL_WB_STROKE',
@@ -147,7 +185,7 @@ export const PersonalWhiteboard = forwardRef<PersonalWhiteboardHandle, PersonalW
         } as PersonalWbStrokeEvent)
       }
       bufferRef.current = []
-    }, [addStrokePoints, roomId, ownerId, isSharing])
+    }, [addStrokePoints, roomId, ownerId, isSharing, saveToStorage])
 
     const getCanvasPoint = useCallback(
       (e: React.PointerEvent | PointerEvent) => {
@@ -219,23 +257,25 @@ export const PersonalWhiteboard = forwardRef<PersonalWhiteboardHandle, PersonalW
       strokesRef.current.delete(lastId)
       strokeOrderRef.current = strokeOrderRef.current.slice(0, -1)
       redrawAll()
+      saveToStorage()
       onAriaAnnounce?.('Stroke undone')
-    }, [redrawAll, onAriaAnnounce])
+    }, [redrawAll, onAriaAnnounce, saveToStorage])
 
     const clearBoard = useCallback(() => {
       strokesRef.current.clear()
       strokeOrderRef.current = []
       redrawAll()
+      saveToStorage()
       onAriaAnnounce?.('Personal whiteboard cleared')
-    }, [redrawAll, onAriaAnnounce])
+    }, [redrawAll, onAriaAnnounce, saveToStorage])
 
     useLayoutEffect(() => {
       const canvas = canvasRef.current
       if (!canvas) return
       canvas.width = PW_W
       canvas.height = PW_H
-      redrawAll()
-    }, [redrawAll])
+      loadFromStorage()
+    }, [loadFromStorage])
 
     if (!isOpen) return null
 
@@ -246,17 +286,6 @@ export const PersonalWhiteboard = forwardRef<PersonalWhiteboardHandle, PersonalW
         role="dialog"
         aria-label="Personal whiteboard"
       >
-        <div className="personal-wb-header">
-          <span className="personal-wb-title">Personal Whiteboard</span>
-          <button
-            type="button"
-            className="personal-wb-close"
-            onClick={onClose}
-            aria-label="Close personal whiteboard"
-          >
-            ×
-          </button>
-        </div>
         <div className="personal-wb-controls">
           <label className="personal-wb-toggle">
             <input

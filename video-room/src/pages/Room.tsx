@@ -28,11 +28,11 @@ function SpatialScaler({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { SpatialCanvas } from '../components/SpatialCanvas'
 import { VideoGrid } from '../components/VideoGrid'
 import { WhiteboardPanel, type WhiteboardPanelHandle, type SharedPersonalWb } from '../components/WhiteboardPanel'
-import type { PersonalWbPermissionMode } from '../components/PersonalWhiteboard'
+import { PersonalWhiteboard, type PersonalWbPermissionMode } from '../components/PersonalWhiteboard'
 import { IncomingSharePrompt } from '../components/IncomingSharePrompt'
 import { CampfireLogo } from '../components/CampfireLogo'
 import { IpadConnectModal } from '../components/IpadConnectModal'
@@ -44,7 +44,8 @@ import type {
   PersonalWbViewRequestEvent,
 } from '../lib/realtimeStub'
 import { useLocalMedia } from '../lib/useLocalMedia'
-import { connectLocalStream, simulateIncomingAudio, disconnectAll } from '../lib/audioSpatializer'
+import { connectLocalStream, simulateIncomingAudio, disconnectPeer, connectRemoteStream } from '../lib/audioSpatializer'
+import { createWebRTCManager } from '../lib/webrtcManager'
 import type { SpatialParticipant } from '../types'
 
 const CANVAS_W = 1200
@@ -63,6 +64,8 @@ const MOCK_SPATIAL_AVATARS: Omit<SpatialParticipant, 'isLocal'>[] = [
   { id: 's8', name: 'Kai', x: 500, y: 950, isMuted: true, avatarColor: AVATAR_COLORS[4] },
 ]
 
+const isDemoMode = import.meta.env.VITE_DEMO_MODE !== 'false'
+
 function createInitialParticipants(localId: string): Map<string, SpatialParticipant> {
   const m = new Map<string, SpatialParticipant>()
   m.set(localId, {
@@ -74,12 +77,27 @@ function createInitialParticipants(localId: string): Map<string, SpatialParticip
     isLocal: true,
     avatarColor: AVATAR_COLORS[0],
   })
-  MOCK_SPATIAL_AVATARS.forEach((a) => m.set(a.id, { ...a, isLocal: false }))
+  if (isDemoMode) {
+    MOCK_SPATIAL_AVATARS.forEach((a) => m.set(a.id, { ...a, isLocal: false }))
+  }
   return m
 }
 
 export function Room() {
-  const { roomId = 'demo-room' } = useParams<{ roomId?: string }>()
+  const { roomId } = useParams<{ roomId?: string }>()
+  const navigate = useNavigate()
+
+  const effectiveRoomId = roomId?.trim() || ''
+
+  useEffect(() => {
+    if (!effectiveRoomId) {
+      navigate('/', { replace: true })
+    }
+  }, [effectiveRoomId, navigate])
+
+  if (!effectiveRoomId) {
+    return null
+  }
   const [layoutMode, setLayoutMode] = useState<'video' | 'screen-share'>('video')
   const [whiteboardMode, setWhiteboardMode] = useState<'screen-share' | 'draw'>('draw')
   const [screenStream] = useState<MediaStream | null>(null)
@@ -92,8 +110,8 @@ export function Room() {
   const [hostLockProximity, setHostLockProximity] = useState(false)
   const [hostDisablePersonalAutoShare, setHostDisablePersonalAutoShare] = useState(false)
   const [personalWbOpen, setPersonalWbOpen] = useState(false)
-  const [personalWbAutoShare] = useState(false)
-  const [personalWbPermissionMode] = useState<PersonalWbPermissionMode>('view-only')
+  const [personalWbAutoShare, setPersonalWbAutoShare] = useState(false)
+  const [personalWbPermissionMode, setPersonalWbPermissionMode] = useState<PersonalWbPermissionMode>('view-only')
   const [personalWbSharing, setPersonalWbSharing] = useState(false)
   const [personalWbShareTargets, setPersonalWbShareTargets] = useState<string[]>([])
   const [proximityPeers, setProximityPeers] = useState<string[]>([])
@@ -105,21 +123,58 @@ export function Room() {
   const { stream: localStream, isMuted, toggleMute } = useLocalMedia()
   const ariaAnnounceRef = useRef<HTMLDivElement>(null)
   const whiteboardRef = useRef<WhiteboardPanelHandle>(null)
+  const webrtcManagerRef = useRef<ReturnType<typeof createWebRTCManager> | null>(null)
 
   useEffect(() => {
-    realtime.join(roomId)
-    realtime.send(roomId, {
+    realtime.join(effectiveRoomId)
+    realtime.send(effectiveRoomId, {
       type: 'JOIN_ROOM',
-      roomId,
+      roomId: effectiveRoomId,
       userId: localUserId,
       name: 'Sarah Chen',
       timestamp: Date.now(),
     })
     return () => realtime.leave()
-  }, [roomId, localUserId])
+  }, [effectiveRoomId, localUserId])
 
   useEffect(() => {
-    const unsub = realtime.on(roomId, (event) => {
+    const manager = createWebRTCManager({
+      roomId: effectiveRoomId,
+      localUserId,
+      localStream,
+      realtime: realtime as { send: (roomId: string, ev: unknown) => void; on: (roomId: string, handler: (ev: unknown) => void) => () => void },
+      onRemoteStream: (peerId, stream) => {
+        setParticipants((prev) => {
+          const next = new Map(prev)
+          const p = next.get(peerId)
+          if (p) next.set(peerId, { ...p, stream })
+          return next
+        })
+        connectRemoteStream(peerId, stream)
+      },
+      onPeerDisconnected: (peerId) => {
+        disconnectPeer(peerId)
+        setParticipants((prev) => {
+          const next = new Map(prev)
+          next.delete(peerId)
+          return next
+        })
+      },
+    })
+    webrtcManagerRef.current = manager
+    manager.start()
+    return () => {
+      manager.destroy()
+      webrtcManagerRef.current = null
+    }
+  }, [effectiveRoomId, localUserId, localStream])
+
+  useEffect(() => {
+    webrtcManagerRef.current?.setLocalStream(localStream)
+  }, [localStream])
+
+  useEffect(() => {
+    const unsub = realtime.on(effectiveRoomId, (event) => {
       if (event.type === 'JOIN_ROOM' && event.userId !== localUserId) {
         setParticipants((prev) => {
           const next = new Map(prev)
@@ -136,10 +191,25 @@ export function Room() {
           })
           return next
         })
+        webrtcManagerRef.current?.addPeer(event.userId)
+      }
+      if (event.type === 'USER_LEFT' && event.userId) {
+        webrtcManagerRef.current?.removePeer(event.userId)
+        setParticipants((prev) => {
+          const next = new Map(prev)
+          next.delete(event.userId)
+          return next
+        })
+        setProximityPeers((prev) => prev.filter((id) => id !== event.userId))
+        setPendingSharePrompt((p) =>
+          p && p.ids.includes(event.userId)
+            ? null
+            : p
+        )
       }
     })
     return unsub
-  }, [roomId, localUserId])
+  }, [effectiveRoomId, localUserId])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -185,9 +255,9 @@ export function Room() {
       if (targetIds.length === 0) return
       setPersonalWbSharing(true)
       setPersonalWbShareTargets(targetIds)
-      realtime.send(roomId, {
+      realtime.send(effectiveRoomId, {
         type: 'PERSONAL_WB_SHARE_START',
-        roomId,
+        roomId: effectiveRoomId,
         ownerId: localUserId,
         ownerName: 'Sarah Chen',
         targetIds,
@@ -197,28 +267,31 @@ export function Room() {
       const names = targetIds.map((id) => participants.get(id)?.name ?? id).join(', ')
       announce(`Your whiteboard is shared with ${names}`)
     },
-    [roomId, localUserId, personalWbPermissionMode, participants, announce]
+    [effectiveRoomId, localUserId, personalWbPermissionMode, participants, announce]
   )
 
   const doPersonalWbShareStop = useCallback(() => {
     setPersonalWbSharing(false)
     const prev = [...personalWbShareTargets]
     setPersonalWbShareTargets([])
-    realtime.send(roomId, {
+    realtime.send(effectiveRoomId, {
       type: 'PERSONAL_WB_SHARE_STOP',
-      roomId,
+      roomId: effectiveRoomId,
       ownerId: localUserId,
       targetIds: prev,
       timestamp: Date.now(),
     } as PersonalWbShareStopEvent)
     announce('Personal whiteboard sharing stopped')
-  }, [roomId, localUserId, personalWbShareTargets, announce])
+  }, [effectiveRoomId, localUserId, personalWbShareTargets, announce])
 
   const handleProximityEnter = useCallback(
     (_clusterId: string, members: string[]) => {
       if (hostLockProximity) return
       const targets = targetsFromProximity(members)
-      targets.forEach((peerId) => simulateIncomingAudio(peerId))
+      targets.forEach((peerId) => {
+        const p = participants.get(peerId)
+        if (!p?.stream) simulateIncomingAudio(peerId)
+      })
       announce(`Private audio connected with ${targets.map((id) => participants.get(id)?.name ?? id).join(', ')}`)
 
       setProximityPeers(targets)
@@ -236,9 +309,12 @@ export function Room() {
   const handleProximityChange = useCallback(
     (nearbyIds: string[]) => {
       if (hostLockProximity) return
+      const prev = proximityPeers
       setProximityPeers(nearbyIds)
       if (nearbyIds.length === 0) {
-        disconnectAll()
+        prev.forEach((peerId) => {
+          if (!participants.get(peerId)?.stream) disconnectPeer(peerId)
+        })
         announce('Private audio disconnected from participants')
         setPendingSharePrompt(null)
         if (personalWbShareDebounceRef.current) {
@@ -247,14 +323,19 @@ export function Room() {
         }
         if (personalWbSharing) doPersonalWbShareStop()
       } else {
-        nearbyIds.forEach((peerId) => simulateIncomingAudio(peerId))
+        nearbyIds.forEach((peerId) => {
+          const p = participants.get(peerId)
+          if (!p?.stream) simulateIncomingAudio(peerId)
+        })
       }
     },
-    [hostLockProximity, personalWbSharing, participants, announce, doPersonalWbShareStop]
+    [hostLockProximity, personalWbSharing, participants, proximityPeers, announce, doPersonalWbShareStop]
   )
 
   const handleProximityExit = useCallback(() => {
-    disconnectAll()
+    proximityPeers.forEach((peerId) => {
+      if (!participants.get(peerId)?.stream) disconnectPeer(peerId)
+    })
     announce('Private audio disconnected from participants')
     setProximityPeers([])
     setPendingSharePrompt(null)
@@ -263,10 +344,10 @@ export function Room() {
       personalWbShareDebounceRef.current = null
     }
     if (personalWbSharing) doPersonalWbShareStop()
-  }, [announce, personalWbSharing, doPersonalWbShareStop])
+  }, [announce, personalWbSharing, doPersonalWbShareStop, proximityPeers, participants])
 
   useEffect(() => {
-    return realtime.on(roomId, (ev) => {
+    return realtime.on(effectiveRoomId, (ev) => {
       if (ev.type === 'PERSONAL_WB_SHARED' || ev.type === 'PERSONAL_WB_SHARE_START') {
         const e = ev as PersonalWbSharedEvent & { targetIds: string[] }
         if (e.targetIds?.includes(localUserId) && e.ownerId !== localUserId) {
@@ -307,11 +388,12 @@ export function Room() {
         }
       }
     })
-  }, [roomId, localUserId, announce])
+  }, [effectiveRoomId, localUserId, announce])
 
   const handleShareMine = useCallback(() => {
     if (proximityPeers.length > 0) {
       doPersonalWbShareStart(proximityPeers)
+      setPersonalWbOpen(true)
       setPendingSharePrompt(null)
     }
   }, [proximityPeers, doPersonalWbShareStart])
@@ -319,17 +401,20 @@ export function Room() {
   const handleViewTheirs = useCallback(() => {
     if (!pendingSharePrompt || pendingSharePrompt.ids.length === 0) return
     const ownerId = pendingSharePrompt.ids[0]
-    realtime.send(roomId, {
+    const ownerName = participants.get(ownerId)?.name ?? pendingSharePrompt.names?.[0] ?? ownerId.slice(0, 8)
+    realtime.send(effectiveRoomId, {
       type: 'PERSONAL_WB_VIEW_REQUEST',
-      roomId,
+      roomId: effectiveRoomId,
       requesterId: localUserId,
       requesterName: 'Sarah Chen',
       ownerId,
       timestamp: Date.now(),
     } as PersonalWbViewRequestEvent)
-    announce(`Requested to view ${participants.get(ownerId)?.name ?? ownerId}'s whiteboard`)
+    setSharedPersonalWb({ ownerId, ownerName, mode: 'view-only' })
+    setPersonalWbOpen(false)
     setPendingSharePrompt(null)
-  }, [pendingSharePrompt, roomId, localUserId, participants, announce])
+    announce(`Viewing ${ownerName}'s whiteboard`)
+  }, [pendingSharePrompt, effectiveRoomId, localUserId, participants, announce])
 
   const handleNeither = useCallback(() => {
     setPendingSharePrompt(null)
@@ -338,7 +423,7 @@ export function Room() {
   const copyRoomLink = useCallback(async () => {
     const url =
       typeof window !== 'undefined'
-        ? `${window.location.origin}/room/${roomId}`
+        ? `${window.location.origin}/room/${effectiveRoomId}`
         : ''
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -362,7 +447,7 @@ export function Room() {
     } catch {
       /* fallback failed */
     }
-  }, [roomId, announce])
+  }, [effectiveRoomId, announce])
 
   const handleViewRequestAccept = useCallback(() => {
     if (!viewRequest) return
@@ -381,28 +466,28 @@ export function Room() {
 
   const handleControlRequestAccept = useCallback(() => {
     if (!controlRequest) return
-    realtime.send(roomId, {
+    realtime.send(effectiveRoomId, {
       type: 'PERSONAL_WB_PERMISSION_GRANT',
-      roomId,
+      roomId: effectiveRoomId,
       ownerId: localUserId,
       requesterId: controlRequest.fromId,
       timestamp: Date.now(),
     })
     setControlRequest(null)
     announce(`Granted control to ${controlRequest.fromName}`)
-  }, [roomId, localUserId, controlRequest, announce])
+  }, [effectiveRoomId, localUserId, controlRequest, announce])
 
   const handleControlRequestDeny = useCallback(() => {
     if (!controlRequest) return
-    realtime.send(roomId, {
+    realtime.send(effectiveRoomId, {
       type: 'PERSONAL_WB_PERMISSION_DENY',
-      roomId,
+      roomId: effectiveRoomId,
       ownerId: localUserId,
       requesterId: controlRequest.fromId,
       timestamp: Date.now(),
     })
     setControlRequest(null)
-  }, [roomId, localUserId, controlRequest])
+  }, [effectiveRoomId, localUserId, controlRequest])
 
   return (
     <div className="room-page" data-layout={layoutMode}>
@@ -461,10 +546,10 @@ export function Room() {
             className={`btn-layout-toggle ${layoutMode === 'screen-share' ? 'active' : ''}`}
             onClick={() => setLayoutMode('screen-share')}
             aria-pressed={layoutMode === 'screen-share'}
-            aria-label="Screen share layout"
-            title="Screen share layout (shared content prominent)"
+            aria-label="Campfire layout"
+            title="Campfire layout (spatial room, shared content prominent)"
           >
-            Screen Share
+            Campfire
           </button>
           <button
             type="button"
@@ -533,7 +618,7 @@ export function Room() {
                   <div className="room-spatial-content">
                     <SpatialScaler>
                     <SpatialCanvas
-                      roomId={roomId}
+                      roomId={effectiveRoomId}
                       localUserId={localUserId}
                       localName="Sarah Chen"
                       participants={participants}
@@ -594,20 +679,47 @@ export function Room() {
                 </section>
               )}
             </div>
-            <section className="room-whiteboard-section room-right-frosted" aria-label="Screen Share">
+            <section className="room-whiteboard-section room-right-frosted" aria-label="Whiteboard">
               <div className="room-screen-share-header">
-                <h2 className="room-screen-share-title">Screen Share</h2>
+                <h2 className="room-screen-share-title">
+                  {personalWbOpen
+                    ? "You are viewing Sarah Chen's Whiteboard"
+                    : sharedPersonalWb
+                      ? `You are viewing ${sharedPersonalWb.ownerName}'s Whiteboard`
+                      : screenStream
+                        ? 'Screen Share'
+                        : 'Whiteboard'}
+                </h2>
               </div>
-              {screenStream && (
+              {screenStream && !personalWbOpen && (
                 <div className="room-sharing-indicator">
                   <span className="room-sharing-avatar">SC</span>
                   <span className="room-sharing-icon">🖥️</span>
                   <span>Sharing: Sarah Chen's Screen</span>
                 </div>
               )}
+              {personalWbOpen ? (
+                <div className="whiteboard-panel personal-wb-panel">
+                  <PersonalWhiteboard
+                    roomId={effectiveRoomId}
+                    ownerId={localUserId}
+                    ownerName="Sarah Chen"
+                    isOpen
+                    onClose={() => setPersonalWbOpen(false)}
+                    autoShare={personalWbAutoShare}
+                    onAutoShareChange={setPersonalWbAutoShare}
+                    permissionMode={personalWbPermissionMode}
+                    onPermissionModeChange={setPersonalWbPermissionMode}
+                    isSharing={personalWbSharing}
+                    onShareStart={proximityPeers.length > 0 ? () => doPersonalWbShareStart(proximityPeers) : undefined}
+                    onShareStop={doPersonalWbShareStop}
+                    onAriaAnnounce={announce}
+                  />
+                </div>
+              ) : (
               <WhiteboardPanel
                 ref={whiteboardRef}
-                roomId={roomId}
+                roomId={effectiveRoomId}
                 mode={whiteboardMode}
                 screenStream={screenStream}
                 onModeChange={setWhiteboardMode}
@@ -616,9 +728,9 @@ export function Room() {
                 onStopViewingShared={handleStopViewingShared}
                 localUserId={localUserId}
                 onRequestControl={(ownerId) => {
-                  realtime.send(roomId, {
+                  realtime.send(effectiveRoomId, {
                     type: 'PERSONAL_WB_PERMISSION_REQUEST',
-                    roomId,
+                    roomId: effectiveRoomId,
                     ownerId,
                     requesterId: localUserId,
                     requesterName: 'Sarah Chen',
@@ -627,6 +739,7 @@ export function Room() {
                   announce('Control requested')
                 }}
               />
+              )}
             </section>
       </main>
 
@@ -667,10 +780,11 @@ export function Room() {
 
       {showIpadModal && (
         <IpadConnectModal
-          roomId={roomId}
+          roomId={effectiveRoomId}
           onClose={() => setShowIpadModal(false)}
         />
       )}
+
     </div>
   )
 }

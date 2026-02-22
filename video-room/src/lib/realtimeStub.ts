@@ -20,6 +20,10 @@ export type RealtimeEvent =
   | WhiteboardClearEvent
   | ScreenShareEvent
   | PersonalWbEvent
+  | WebrtcOfferEvent
+  | WebrtcAnswerEvent
+  | WebrtcIceCandidateEvent
+  | UserLeftEvent
 
 export interface JoinRoomEvent {
   type: 'JOIN_ROOM'
@@ -192,6 +196,41 @@ export interface PersonalWbViewRequestEvent {
   requesterId: string
   requesterName?: string
   ownerId: string
+  timestamp: number
+}
+
+// WebRTC signaling (unicast to toId via ws-server)
+export interface WebrtcOfferEvent {
+  type: 'WEBRTC_OFFER'
+  roomId: string
+  fromId: string
+  toId: string
+  sdp: RTCSessionDescriptionInit
+  timestamp: number
+}
+
+export interface WebrtcAnswerEvent {
+  type: 'WEBRTC_ANSWER'
+  roomId: string
+  fromId: string
+  toId: string
+  sdp: RTCSessionDescriptionInit
+  timestamp: number
+}
+
+export interface WebrtcIceCandidateEvent {
+  type: 'WEBRTC_ICE_CANDIDATE'
+  roomId: string
+  fromId: string
+  toId: string
+  candidate: RTCIceCandidateInit
+  timestamp: number
+}
+
+export interface UserLeftEvent {
+  type: 'USER_LEFT'
+  roomId: string
+  userId: string
   timestamp: number
 }
 
