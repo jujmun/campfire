@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Campfire — Dark red base with orange-yellow accents (embers, flames) */
+:root {
+  --collab-bg: #fef2f2;
+  --collab-bg-elevated: #ffffff;
+  --collab-bg-warm: #fff7ed;
+  --collab-bg-cool: #fffbeb;
+  --collab-border: rgba(185, 28, 28, 0.2);
+  --collab-border-soft: rgba(127, 29, 29, 0.1);
+  --collab-text: #1c1917;
+  --collab-text-muted: #78716c;
+  --collab-text-soft: #a8a29e;
+  --collab-accent: #b91c1c;
+  --collab-accent-hover: #991b1b;
+  --collab-accent-soft: rgba(185, 28, 28, 0.12);
+  --collab-warm: #f59e0b;
+  --collab-warm-soft: rgba(245, 158, 11, 0.18);
+  --collab-flame: #fbbf24;
+  --collab-flame-soft: rgba(251, 191, 36, 0.15);
+  --collab-shadow: 0 2px 8px rgba(185, 28, 28, 0.1);
+  --collab-shadow-lg: 0 8px 32px rgba(185, 28, 28, 0.12);
+  --collab-radius: 8px;
+  --collab-radius-lg: 12px;
+  --font: 'Oswald', sans-serif;
+  --letter-spacing: 0.02em;
+}
+
+@theme {
+  --color-bg-base: #fef2f2;
+  --color-bg-surface: #ffffff;
+  --color-border: rgba(185, 28, 28, 0.2);
+  --color-text-primary: #1c1917;
+  --color-text-secondary: #78716c;
+  --color-accent: #b91c1c;
+  --color-accent-hover: #991b1b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 18px;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: var(--letter-spacing);
+  background: var(--collab-bg);
+  color: var(--collab-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

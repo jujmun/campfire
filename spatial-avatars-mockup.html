@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1200, initial-scale=1">
+  <title>Spatial Avatars — Proximity-Based Private Audio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #F6F7FB;
+      --avatar-bg: #FFFFFF;
+      --primary: #5B8CFF;
+      --private: #FF9F43;
+      --text-primary: #2D3436;
+      --text-secondary: #636E72;
+      --shadow: 0 2px 8px rgba(0,0,0,0.06);
+      --shadow-glow: 0 0 20px rgba(91,140,255,0.4);
+      --shadow-private: 0 0 16px rgba(255,159,67,0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .canvas {
+      width: 1200px;
+      height: 800px;
+      margin: 0 auto;
+      background: var(--bg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .room-header {
+      height: 52px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 18px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .host-lock {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .room-floor {
+      position: absolute;
+      inset: 0;
+      top: 52px;
+      background: var(--bg);
+    }
+
+    .avatar {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: default;
+    }
+
+    .avatar-ring {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: var(--avatar-bg);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      border: 3px solid transparent;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .avatar.approaching .avatar-ring {
+      box-shadow: var(--shadow-glow);
+      border-color: rgba(91,140,255,0.5);
+    }
+
+    .avatar.active-private .avatar-ring {
+      border-color: var(--private);
+      box-shadow: var(--shadow-private);
+    }
+
+    .avatar-name {
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+      text-align: center;
+    }
+
+    .avatar-badge {
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--private);
+      color: white;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: var(--shadow);
+      z-index: 2;
+    }
+
+    .avatar-badge.hidden { display: none; }
+
+    .mic-icon {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: white;
+    }
+
+    .hint-text {
+      position: absolute;
+      bottom: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: var(--primary);
+      white-space: nowrap;
+      background: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+      z-index: 3;
+    }
+
+    .hint-text.hidden { display: none; }
+
+    /* Proximity circle (design annotation only) */
+    .proximity-circle {
+      position: absolute;
+      border: 2px dashed rgba(91,140,255,0.5);
+      border-radius: 50%;
+      width: 120px;
+      height: 120px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .proximity-circle.hidden { display: none; }
+
+    /* Floating private controls */
+    .private-controls {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--avatar-bg);
+      padding: 10px 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      z-index: 20;
+    }
+
+    .private-controls.hidden { display: none; }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-secondary { background: #E8EBF5; color: var(--text-primary); }
+    .btn-private { background: var(--private); color: white; }
+
+    .keyboard-hint {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-left: 8px;
+    }
+
+    /* Callouts */
+    .callout {
+      position: absolute;
+      background: white;
+      border: 1px solid #E8EBF5;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      max-width: 220px;
+      box-shadow: var(--shadow);
+      z-index: 30;
+    }
+    .callout-num { font-weight: 600; color: var(--primary); margin-right: 6px; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="screen-switcher" style="position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:200;">
+    <button class="sw-btn active" data-screen="room">1. Room</button>
+    <button class="sw-btn" data-screen="approaching">2. Approaching</button>
+    <button class="sw-btn" data-screen="active">3. Active private</button>
+  </div>
+
+  <style>
+    .sw-btn { padding:8px 16px; background:white; border:1px solid #E8EBF5; border-radius:8px; cursor:pointer; font-size:13px; }
+    .sw-btn:hover, .sw-btn.active { background:var(--primary); color:white; border-color:var(--primary); }
+  </style>
+
+  <!-- Screen 1: Default room with 8 avatars -->
+  <div id="screen-room" class="canvas" data-screen>
+    <div class="room-header">
+      <span>Spatial Meeting — Product Review</span>
+      <span class="host-lock">Host can lock private audio</span>
+    </div>
+    <div class="room-floor">
+      <div class="avatar" style="left:120px; top:180px;"><div class="avatar-ring">J</div><span class="avatar-name">Jordan</span></div>
+      <div class="avatar" style="left:340px; top:120px;"><div class="avatar-ring">A</div><span class="avatar-name">Alex</span></div>
+      <div class="avatar" style="left:560px; top:100px;"><div class="avatar-ring">S</div><span class="avatar-name">Sam</span></div>
+      <div class="avatar" style="left:780px; top:160px;"><div class="avatar-ring">R</div><span class="avatar-name">Riley</span></div>
+      <div class="avatar" style="left:1000px; top:260px;"><div class="avatar-ring">C</div><span class="avatar-name">Casey</span></div>
+      <div class="avatar" style="left:1000px; top:480px;"><div class="avatar-ring">D</div><span class="avatar-name">Drew</span></div>
+      <div class="avatar" style="left:560px; top:520px;"><div class="avatar-ring">M</div><span class="avatar-name">Morgan (You)</span></div>
+      <div class="avatar" style="left:200px; top:480px;"><div class="avatar-ring">K</div><span class="avatar-name">Kai</span></div>
+    </div>
+
+    <div class="callout" style="top:80px; left:40px;">
+      <span class="callout-num">1.</span> Movement: drag or keyboard-move avatar; within 120px → auto-connect after 250ms debounce.
+    </div>
+    <div class="callout" style="top:80px; right:40px;">
+      <span class="callout-num">2.</span> Hysteresis: 140px exit radius avoids flapping when moving in/out.
+    </div>
+    <div class="callout" style="bottom:80px; left:40px;">
+      <span class="callout-num">3.</span> Proximity radius: 120px (shown in annotations only; not persistent in UI).
+    </div>
+  </div>
+
+  <!-- Screen 2: Approaching state -->
+  <div id="screen-approaching" class="canvas" data-screen style="display:none;">
+    <div class="room-header">
+      <span>Spatial Meeting — Product Review</span>
+      <span class="host-lock">Host can lock private audio</span>
+    </div>
+    <div class="room-floor">
+      <div class="avatar" style="left:120px; top:180px;"><div class="avatar-ring">J</div><span class="avatar-name">Jordan</span></div>
+      <div class="avatar approaching" style="left:420px; top:280px;">
+        <div class="avatar-ring">A</div>
+        <span class="avatar-name">Alex</span>
+        <span class="hint-text">Move closer to start private audio</span>
+      </div>
+      <div class="avatar approaching" style="left:560px; top:320px;">
+        <div class="avatar-ring">M</div>
+        <span class="avatar-name">Morgan (You)</span>
+        <span class="hint-text">Move closer to start private audio</span>
+      </div>
+      <div class="avatar" style="left:560px; top:100px;"><div class="avatar-ring">S</div><span class="avatar-name">Sam</span></div>
+      <div class="avatar" style="left:780px; top:160px;"><div class="avatar-ring">R</div><span class="avatar-name">Riley</span></div>
+      <div class="avatar" style="left:1000px; top:260px;"><div class="avatar-ring">C</div><span class="avatar-name">Casey</span></div>
+      <div class="avatar" style="left:1000px; top:480px;"><div class="avatar-ring">D</div><span class="avatar-name">Drew</span></div>
+      <div class="avatar" style="left:200px; top:480px;"><div class="avatar-ring">K</div><span class="avatar-name">Kai</span></div>
+      <div class="proximity-circle" style="left:560px; top:300px; transform:translate(-50%, -50%);"></div>
+    </div>
+
+    <div class="callout" style="top:80px; left:40px;">
+      <span class="callout-num">4.</span> On approach: subtle glow on both avatars + hint text.
+    </div>
+    <div class="callout" style="bottom:80px; left:40px;">
+      <span class="callout-num">5.</span> Audio fade: 200ms fade in/out when connecting/disconnecting.
+    </div>
+  </div>
+
+  <!-- Screen 3: Active private state -->
+  <div id="screen-active" class="canvas" data-screen style="display:none;">
+    <div class="room-header">
+      <span>Spatial Meeting — Product Review</span>
+      <span class="host-lock">Host can lock private audio</span>
+    </div>
+    <div class="room-floor">
+      <div class="avatar" style="left:120px; top:180px;"><div class="avatar-ring">J</div><span class="avatar-name">Jordan</span></div>
+      <div class="avatar active-private" style="left:400px; top:280px;">
+        <div class="avatar-badge">🔒 Private audio</div>
+        <div class="avatar-ring">A</div>
+        <span class="avatar-name">Alex</span>
+      </div>
+      <div class="avatar" style="left:560px; top:100px;"><div class="avatar-ring">S</div><span class="avatar-name">Sam</span></div>
+      <div class="avatar" style="left:780px; top:160px;"><div class="avatar-ring">R</div><span class="avatar-name">Riley</span></div>
+      <div class="avatar" style="left:1000px; top:260px;"><div class="avatar-ring">C</div><span class="avatar-name">Casey</span></div>
+      <div class="avatar" style="left:1000px; top:480px;"><div class="avatar-ring">D</div><span class="avatar-name">Drew</span></div>
+      <div class="avatar active-private" style="left:560px; top:320px;">
+        <div class="avatar-badge">🔒 Private audio</div>
+        <div class="avatar-ring">M</div>
+        <span class="avatar-name">Morgan (You)</span>
+      </div>
+      <div class="avatar" style="left:200px; top:480px;"><div class="avatar-ring">K</div><span class="avatar-name">Kai</span></div>
+    </div>
+    <div class="private-controls">
+      <button class="btn btn-secondary" aria-label="Mute your private microphone. Press spacebar to toggle.">Mute</button>
+      <button class="btn btn-private" aria-label="End private audio with Alex">End</button>
+      <span class="keyboard-hint">Spacebar toggles mute</span>
+    </div>
+
+    <div class="callout" style="top:80px; right:40px;">
+      <span class="callout-num">6.</span> Accessible: all controls keyboard-focusable; ARIA live region announces state changes.
+    </div>
+
+    <div aria-live="polite" aria-atomic="true" class="sr-only">Private audio started with Alex.</div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.sw-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.sw-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const s = btn.dataset.screen;
+        document.querySelectorAll('.canvas[data-screen]').forEach(el => {
+          el.style.display = el.id === 'screen-' + s ? 'block' : 'none';
+        });
+      });
+    });
+  </script>
+</body>
+</html>

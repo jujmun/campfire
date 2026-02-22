@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1200, initial-scale=1">
+  <title>Tap to Talk Privately — Meeting Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-neutral: #F7F8FA;
+      --tile-bg: #FFFFFF;
+      --primary: #6C5CE7;
+      --private-active: #FF9F43;
+      --text-primary: #2D3436;
+      --text-secondary: #636E72;
+      --shadow: 0 2px 8px rgba(0,0,0,0.06);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.1);
+      --radius: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-neutral);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .canvas {
+      width: 1200px;
+      height: 800px;
+      margin: 0 auto;
+      background: var(--bg-neutral);
+      position: relative;
+    }
+
+    /* ——— Screen 1: Meeting room grid ——— */
+    .meeting-header {
+      height: 56px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .grid-container {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      width: 1200px;
+      max-width: 100%;
+    }
+
+    .tile {
+      width: 360px;
+      height: 220px;
+      background: var(--tile-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tile:hover {
+      box-shadow: var(--shadow-hover);
+    }
+
+    .tile.active-private {
+      outline: 2px solid var(--private-active);
+      outline-offset: 2px;
+    }
+
+    .tile-menu {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.4);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 2;
+      border: none;
+    }
+    .tile-menu:hover, .tile-menu:focus {
+      background: rgba(0,0,0,0.6);
+      outline: 2px solid white;
+      outline-offset: 2px;
+    }
+
+    .video-placeholder {
+      flex: 1;
+      background: linear-gradient(135deg, #E8E9ED 0%, #D8DAE0 100%);
+      border-radius: 0 0 var(--radius) var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      color: var(--text-secondary);
+    }
+
+    .tile-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.5));
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tile-name {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .tile-actions {
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .tile:hover .tile-actions {
+      opacity: 1;
+    }
+
+    .btn-talk-private {
+      padding: 6px 12px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-talk-private:hover, .btn-talk-private:focus {
+      background: #5B4BD4;
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .mic-muted {
+      margin-left: 8px;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    /* Private badge */
+    .private-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: var(--private-active);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 2;
+    }
+
+    /* ——— Screen 2: Incoming request modal ——— */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-card {
+      width: 380px;
+      background: var(--tile-bg);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      padding: 28px;
+      text-align: center;
+    }
+
+    .modal-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary) 0%, #A29BFE 100%);
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      color: white;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .modal-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: #5B4BD4; }
+
+    .btn-secondary {
+      background: var(--bg-neutral);
+      color: var(--text-primary);
+    }
+    .btn-secondary:hover { background: #E8E9ED; }
+
+    /* ——— Screen 3: Private controls overlay ——— */
+    .private-controls {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--tile-bg);
+      padding: 12px 20px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-hover);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      z-index: 50;
+    }
+
+    .private-controls .btn {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
+    /* ——— Annotations / Callouts ——— */
+    .callout {
+      position: absolute;
+      background: white;
+      border: 1px solid #E8E9ED;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      max-width: 200px;
+      box-shadow: var(--shadow);
+      z-index: 10;
+    }
+    .callout::before {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 0;
+      border: 6px solid transparent;
+    }
+    .callout-num {
+      font-weight: 600;
+      color: var(--primary);
+      margin-right: 6px;
+    }
+
+    /* ——— Screen switcher (for demo) ——— */
+    .screen-switcher {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 8px;
+      z-index: 200;
+    }
+    .screen-switcher button {
+      padding: 8px 16px;
+      background: white;
+      border: 1px solid #E8E9ED;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .screen-switcher button:hover, .screen-switcher button.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    /* ARIA live region */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      border: 0;
+    }
+
+    /* Host lock icon hint */
+    .host-lock {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="screen-switcher">
+    <button class="active" data-screen="room">1. Meeting room</button>
+    <button data-screen="modal">2. Incoming modal</button>
+    <button data-screen="private">3. Active private</button>
+  </div>
+
+  <!-- Screen 1: Meeting room grid -->
+  <div id="screen-room" class="canvas" data-screen>
+    <div class="meeting-header">
+      <span>Meeting: Product Review</span>
+      <span class="host-lock">Host can disable private chats</span>
+    </div>
+    <div class="grid-container">
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Jordan">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer">
+          <span class="tile-name">Jordan</span>
+          <div class="tile-actions">
+            <button class="btn-talk-private" aria-label="Talk privately with Jordan">Talk Privately</button>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Alex">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer">
+          <span class="tile-name">Alex</span>
+          <span class="mic-muted" aria-hidden="true">🔇</span>
+          <div class="tile-actions">
+            <button class="btn-talk-private" aria-label="Talk privately with Alex">Talk Privately</button>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Sam">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer">
+          <span class="tile-name">Sam</span>
+          <div class="tile-actions">
+            <button class="btn-talk-private" aria-label="Talk privately with Sam">Talk Privately</button>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Riley">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer">
+          <span class="tile-name">Riley</span>
+          <div class="tile-actions">
+            <button class="btn-talk-private" aria-label="Talk privately with Riley">Talk Privately</button>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Casey">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer">
+          <span class="tile-name">Casey</span>
+          <span class="mic-muted" aria-hidden="true">🔇</span>
+          <div class="tile-actions">
+            <button class="btn-talk-private" aria-label="Talk privately with Casey">Talk Privately</button>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Morgan">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer">
+          <span class="tile-name">Morgan (You)</span>
+          <div class="tile-actions">
+            <button class="btn-talk-private" aria-label="Talk privately" disabled>Talk Privately</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Callouts for Screen 1 -->
+    <div class="callout" style="top: 80px; left: 380px;">
+      <span class="callout-num">1.</span> Tap flow: User taps tile → confirmation → sends PRIVATE_REQUEST
+    </div>
+    <div class="callout" style="top: 320px; right: 60px;">
+      <span class="callout-num">2.</span> Hover shows "Talk Privately" button
+    </div>
+    <div class="callout" style="bottom: 80px; left: 40px;">
+      <span class="callout-num">3.</span> Mic muted icon when participant is muted
+    </div>
+  </div>
+
+  <!-- Screen 2: Incoming modal (shown separately) -->
+  <div id="screen-modal" class="canvas" data-screen style="display: none;">
+    <div class="grid-container" style="opacity: 0.4; pointer-events: none;">
+      <div class="tile"><div class="video-placeholder">🎥</div><div class="tile-footer"><span class="tile-name">Jordan</span></div></div>
+      <div class="tile"><div class="video-placeholder">🎥</div><div class="tile-footer"><span class="tile-name">Alex</span></div></div>
+      <div class="tile"><div class="video-placeholder">🎥</div><div class="tile-footer"><span class="tile-name">Sam</span></div></div>
+      <div class="tile"><div class="video-placeholder">🎥</div><div class="tile-footer"><span class="tile-name">Riley</span></div></div>
+      <div class="tile"><div class="video-placeholder">🎥</div><div class="tile-footer"><span class="tile-name">Casey</span></div></div>
+      <div class="tile"><div class="video-placeholder">🎥</div><div class="tile-footer"><span class="tile-name">Morgan (You)</span></div></div>
+    </div>
+    <div class="modal-overlay" style="position: absolute; background: rgba(0,0,0,0.4);">
+      <div class="modal-card" role="alertdialog" aria-labelledby="modal-title" aria-describedby="modal-desc">
+        <div class="modal-avatar">A</div>
+        <h2 id="modal-title" class="modal-title">Alex wants to talk privately</h2>
+        <p id="modal-desc" class="modal-text">Alex wants to talk privately with you. Accept to start a one-to-one audio conversation.</p>
+        <div class="modal-buttons">
+          <button class="btn btn-primary" aria-label="Accept private conversation with Alex">Accept</button>
+          <button class="btn btn-secondary" aria-label="Decline private conversation">Decline</button>
+        </div>
+      </div>
+    </div>
+    <div class="callout" style="top: 100px; right: 80px;">
+      <span class="callout-num">4.</span> Recipient view: modal has focus trap & keyboard access
+    </div>
+  </div>
+
+  <!-- Screen 3: Active private state -->
+  <div id="screen-private" class="canvas" data-screen style="display: none;">
+    <div class="grid-container">
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Jordan">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer"><span class="tile-name">Jordan</span></div>
+      </div>
+      <div class="tile active-private">
+        <div class="private-badge">🔒 Private with Morgan</div>
+        <button class="tile-menu" aria-label="More options for Alex">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer"><span class="tile-name">Alex</span></div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Sam">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer"><span class="tile-name">Sam</span></div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Riley">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer"><span class="tile-name">Riley</span></div>
+      </div>
+      <div class="tile">
+        <button class="tile-menu" aria-label="More options for Casey">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer"><span class="tile-name">Casey</span></div>
+      </div>
+      <div class="tile active-private">
+        <div class="private-badge">🔒 Private with Alex</div>
+        <button class="tile-menu" aria-label="More options for Morgan">⋯</button>
+        <div class="video-placeholder">🎥</div>
+        <div class="tile-footer"><span class="tile-name">Morgan (You)</span></div>
+      </div>
+    </div>
+    <div class="private-controls">
+      <button class="btn btn-secondary" aria-label="Mute your private microphone">Mute private</button>
+      <button class="btn btn-primary" style="background: var(--private-active);" aria-label="End private conversation with Alex">End private</button>
+    </div>
+    <div class="callout" style="top: 80px; left: 400px;">
+      <span class="callout-num">5.</span> Both tiles get orange accent + badge when private active
+    </div>
+    <div class="callout" style="bottom: 180px; left: 480px;">
+      <span class="callout-num">6.</span> Policy: Host can disable private chats (lock icon in list)
+    </div>
+    <div aria-live="polite" aria-atomic="true" class="sr-only">
+      Private audio started with Alex.
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.screen-switcher button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.screen-switcher button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const screen = btn.dataset.screen;
+        document.querySelectorAll('[data-screen]').forEach(el => {
+          el.style.display = el.id === 'screen-' + screen ? 'block' : 'none';
+        });
+      });
+    });
+  </script>
+</body>
+</html>

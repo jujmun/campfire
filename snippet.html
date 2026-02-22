@@ -1,0 +1,73 @@
+<!-- Copy-pasteable HTML/CSS snippet — Tap to Talk Privately mockup -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+:root{--bg:#F7F8FA;--tile:#fff;--primary:#6C5CE7;--private:#FF9F43;--r:10px}
+body{font-family:Inter,-apple-system,sans-serif;background:var(--bg);margin:0}
+.grid{display:grid;grid-template-columns:repeat(3,360px);gap:16px;padding:24px;width:1200px}
+.tile{width:360px;height:220px;background:var(--tile);border-radius:var(--r);box-shadow:0 2px 8px rgba(0,0,0,.06);position:relative;overflow:hidden}
+.tile:hover{box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.tile.active-private{outline:2px solid var(--private);outline-offset:2px}
+.tile-menu{position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:6px;background:rgba(0,0,0,.4);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none}
+.tile-menu:focus{outline:2px solid #fff;outline-offset:2px}
+.video-ph{flex:1;background:linear-gradient(135deg,#E8E9ED,#D8DAE0);height:160px;display:flex;align-items:center;justify-content:center;font-size:48px}
+.tile-footer{position:absolute;bottom:0;left:0;right:0;padding:12px;background:linear-gradient(transparent,rgba(0,0,0,.5));color:#fff;display:flex;align-items:center;justify-content:space-between;font-size:14px}
+.tile-actions{opacity:0;transition:opacity .2s}
+.tile:hover .tile-actions{opacity:1}
+.btn-talk{padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer}
+.btn-talk:focus{outline:2px solid var(--primary);outline-offset:2px}
+.private-badge{position:absolute;top:12px;left:12px;background:var(--private);color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;z-index:2}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-card{width:380px;background:var(--tile);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.12);padding:28px;text-align:center}
+.modal-avatar{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#A29BFE);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff}
+.modal-title{font-size:18px;margin-bottom:8px}
+.modal-text{font-size:14px;color:#636e72;margin-bottom:24px}
+.modal-btns{display:flex;gap:12px;justify-content:center}
+.btn{padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer;border:none}
+.btn:focus{outline:2px solid var(--primary);outline-offset:2px}
+.btn-pri{background:var(--primary);color:#fff}
+.btn-sec{background:var(--bg);color:#2d3436}
+.private-ctrl{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--tile);padding:12px 20px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1);display:flex;gap:12px;z-index:50}
+</style>
+</head>
+<body>
+<!-- Grid with 6 tiles -->
+<div class="grid">
+  <div class="tile">
+    <button class="tile-menu" aria-label="More options">⋯</button>
+    <div class="video-ph">🎥</div>
+    <div class="tile-footer"><span>Jordan</span><div class="tile-actions"><button class="btn-talk" aria-label="Talk privately with Jordan">Talk Privately</button></div></div>
+  </div>
+  <div class="tile">
+    <button class="tile-menu" aria-label="More options">⋯</button>
+    <div class="video-ph">🎥</div>
+    <div class="tile-footer"><span>Alex</span><div class="tile-actions"><button class="btn-talk" aria-label="Talk privately with Alex">Talk Privately</button></div></div>
+  </div>
+  <!-- ... repeat for Sam, Riley, Casey, Morgan -->
+</div>
+
+<!-- Incoming modal (hide with display:none when not shown) -->
+<div class="modal-overlay" id="modal" style="display:none">
+  <div class="modal-card" role="alertdialog" aria-labelledby="mt" aria-describedby="md">
+    <div class="modal-avatar">A</div>
+    <h2 id="mt" class="modal-title">Alex wants to talk privately</h2>
+    <p id="md" class="modal-text">Alex wants to talk privately with you. Accept to start a one-to-one audio conversation.</p>
+    <div class="modal-btns">
+      <button class="btn btn-pri" aria-label="Accept private conversation with Alex">Accept</button>
+      <button class="btn btn-sec" aria-label="Decline private conversation">Decline</button>
+    </div>
+  </div>
+</div>
+
+<!-- Active private: add .active-private + .private-badge to tiles; show private-ctrl -->
+<div class="tile active-private"><div class="private-badge">🔒 Private with Alex</div>...</div>
+<div class="private-ctrl" style="display:none">
+  <button class="btn btn-sec" aria-label="Mute your private microphone">Mute private</button>
+  <button class="btn btn-pri" style="background:var(--private)" aria-label="End private conversation with Alex">End private</button>
+</div>
+
+<!-- ARIA live: <div aria-live="polite" aria-atomic="true" class="sr-only">Private audio started with Alex.</div> -->
+</body>
+</html>

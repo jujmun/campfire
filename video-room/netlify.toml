@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/room/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ipad"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/spatial-office"
+  to = "/index.html"
+  status = 200
