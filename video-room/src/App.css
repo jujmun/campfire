@@ -860,6 +860,21 @@
   color: var(--collab-text-muted);
 }
 
+.room-connection-banner {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--collab-text);
+  background: rgba(234, 179, 8, 0.15);
+  border-bottom: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.room-connection-banner code {
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 /* Spatial footer */
 .spatial-footer {
   display: flex;

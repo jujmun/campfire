@@ -36,7 +36,13 @@ import { PersonalWhiteboard, type PersonalWbPermissionMode } from '../components
 import { IncomingSharePrompt } from '../components/IncomingSharePrompt'
 import { CampfireLogo } from '../components/CampfireLogo'
 import { IpadConnectModal } from '../components/IpadConnectModal'
-import { realtime, generateClientId } from '../lib/realtime'
+import {
+  realtime,
+  generateClientId,
+  getRealtimeConnectionStatus,
+  onRealtimeConnectionStateChange,
+} from '../lib/realtime'
+import type { RealtimeWsConnectionState } from '../lib/realtime'
 import type {
   PersonalWbShareStartEvent,
   PersonalWbShareStopEvent,
@@ -123,6 +129,7 @@ export function Room() {
   )
   const [showIpadModal, setShowIpadModal] = useState(false)
   const [roomLinkCopied, setRoomLinkCopied] = useState(false)
+  const [realtimeStatus, setRealtimeStatus] = useState(() => getRealtimeConnectionStatus())
   const [hostLockProximity, setHostLockProximity] = useState(false)
   const [hostDisablePersonalAutoShare, setHostDisablePersonalAutoShare] = useState(false)
   const [personalWbOpen, setPersonalWbOpen] = useState(false)
@@ -188,6 +195,14 @@ export function Room() {
   useEffect(() => {
     webrtcManagerRef.current?.setLocalStream(localStream)
   }, [localStream])
+
+  useEffect(() => {
+    setRealtimeStatus(getRealtimeConnectionStatus())
+    const unsub = onRealtimeConnectionStateChange((state: RealtimeWsConnectionState) => {
+      setRealtimeStatus((prev) => ({ ...prev, connectionState: state }))
+    })
+    return () => unsub?.()
+  }, [])
 
   useEffect(() => {
     const unsub = realtime.on(effectiveRoomId, (event) => {
@@ -524,7 +539,26 @@ export function Room() {
           <span className="room-dimensions">700×1600</span>
         </div>
         <div className="room-actions">
-          <span className="room-status-item" title="Connection">Good</span>
+          <span
+            className="room-status-item"
+            title={
+              realtimeStatus.transport === 'broadcast'
+                ? 'Multi-device disabled (set VITE_WS_URL and redeploy)'
+                : realtimeStatus.connectionState === 'open'
+                  ? 'Realtime connected'
+                  : realtimeStatus.connectionState === 'connecting'
+                    ? 'Connecting…'
+                    : 'Realtime disconnected'
+            }
+          >
+            {realtimeStatus.transport === 'broadcast'
+              ? 'Local only'
+              : realtimeStatus.connectionState === 'open'
+                ? 'Connected'
+                : realtimeStatus.connectionState === 'connecting'
+                  ? '…'
+                  : 'Disconnected'}
+          </span>
           <span className="room-status-item" title="Participants">{participants.size}</span>
           <span className="room-status-item" title="Secure">SRTP</span>
           {participants.size > 6 && (
@@ -591,6 +625,21 @@ export function Room() {
           </button>
         </div>
       </header>
+
+      {(realtimeStatus.transport === 'broadcast' || realtimeStatus.connectionState === 'closed') && (
+        <div className="room-connection-banner" role="alert">
+          {realtimeStatus.transport === 'broadcast' ? (
+            <>
+              <strong>Others can’t join from another device.</strong> This session is local-only. Deploy with{' '}
+              <code>VITE_WS_URL=wss://your-ws-server</code> (e.g. Railway) and redeploy the frontend so the room link works for everyone.
+            </>
+          ) : (
+            <>
+              <strong>Realtime disconnected.</strong> People using the room link may not see you. Check that the WebSocket server is running and the room link uses the correct app URL (not a Vercel dashboard link).
+            </>
+          )}
+        </div>
+      )}
 
       <main className="room-main">
         <div className="room-left-column room-left-frosted">

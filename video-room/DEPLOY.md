@@ -112,6 +112,23 @@ Output is in `dist/`.
 
 ---
 
+## Troubleshooting: Others can't join
+
+If people who open the room link don't see you (or you don't see them):
+
+1. **Share the public app URL, not a Vercel dashboard link.**  
+   The link must be `https://your-project.vercel.app/room/ROOMCODE` (or your custom domain). If they see a "Log in to Vercel" page, they're on a dashboard link.
+
+2. **Set `VITE_WS_URL` in Vercel and redeploy.**  
+   In the room, the header shows "Connected" when the WebSocket is working and "Local only" when it isn't. If it says "Local only", the frontend was built without `VITE_WS_URL`, so it uses in-browser-only sync and other devices can't join. Add `VITE_WS_URL=wss://your-railway-app.up.railway.app` in Vercel → Settings → Environment Variables, then redeploy.
+
+3. **Check the WebSocket server.**  
+   Open `https://your-railway-app.up.railway.app/health` in a browser. You should see `{"ok":true,"service":"campfire-ws"}`. If it fails, the ws-server isn't running or isn't reachable.
+
+4. **Turn off Vercel Deployment Protection for Production** if you want anyone with the link to join without logging in. In Vercel → Project → Settings → Deployment Protection, ensure Production isn't password-protected.
+
+---
+
 ## Caveats
 
 - **No auth** — Anyone with the room URL can join. Consider adding auth/tokens for production.

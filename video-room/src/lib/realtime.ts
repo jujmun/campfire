@@ -15,10 +15,30 @@ import type {
   StrokeUndoEvent,
   WhiteboardClearEvent,
 } from './realtimeStub'
-import { createRealtimeWs } from './realtimeWs'
+import { createRealtimeWs, type RealtimeWsConnectionState } from './realtimeWs'
 
 const wsUrl = import.meta.env.VITE_WS_URL as string | undefined
 export const realtime = wsUrl ? createRealtimeWs(wsUrl) : realtimeStub
+
+export type { RealtimeWsConnectionState }
+
+export function getRealtimeConnectionStatus(): {
+  transport: 'websocket' | 'broadcast'
+  connectionState?: RealtimeWsConnectionState
+} {
+  const r = realtime as { getConnectionState?: () => RealtimeWsConnectionState }
+  if (typeof r.getConnectionState === 'function') {
+    return { transport: 'websocket', connectionState: r.getConnectionState() }
+  }
+  return { transport: 'broadcast' }
+}
+
+export function onRealtimeConnectionStateChange(
+  fn: (state: RealtimeWsConnectionState) => void
+): (() => void) | undefined {
+  const r = realtime as { onConnectionStateChange?: (cb: (s: RealtimeWsConnectionState) => void) => () => void }
+  return typeof r.onConnectionStateChange === 'function' ? r.onConnectionStateChange(fn) : undefined
+}
 
 // Re-export id generators
 export const generateClientId = _generateClientId
