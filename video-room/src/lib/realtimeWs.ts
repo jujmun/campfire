@@ -17,6 +17,8 @@ export class RealtimeWsImpl {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   private _connectionState: RealtimeWsConnectionState = 'closed'
   private connectionStateListeners = new Set<(state: RealtimeWsConnectionState) => void>()
+  private pendingMessages: string[] = []
+  private hasSubscribed: boolean = false
 
   constructor(wsUrl: string) {
     this.wsUrl = wsUrl.replace(/^http/, 'ws')
@@ -61,10 +63,18 @@ export class RealtimeWsImpl {
         this.setConnectionState('open')
         if (this.currentRoom) {
           this.ws?.send(JSON.stringify({ type: 'subscribe', roomId: this.currentRoom }))
+          this.hasSubscribed = true
+          // Flush any queued events that were sent before the socket opened.
+          const queued = this.pendingMessages
+          this.pendingMessages = []
+          queued.forEach((m) => {
+            if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(m)
+          })
         }
       }
       this.ws.onclose = () => {
         this.setConnectionState('closed')
+        this.hasSubscribed = false
         if (this.currentRoom && !this.reconnectTimeout) {
           this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null
@@ -84,9 +94,11 @@ export class RealtimeWsImpl {
   join(room: string): void {
     this.leave()
     this.currentRoom = room
+    this.hasSubscribed = false
     this.connect()
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'subscribe', roomId: room }))
+      this.hasSubscribed = true
     }
   }
 
@@ -96,6 +108,8 @@ export class RealtimeWsImpl {
       this.reconnectTimeout = null
     }
     this.currentRoom = null
+    this.hasSubscribed = false
+    this.pendingMessages = []
     this.ws?.close()
     this.ws = null
     this.setConnectionState('closed')
@@ -103,9 +117,18 @@ export class RealtimeWsImpl {
 
   send(roomId: string, event: RealtimeEvent | Omit<RealtimeEvent, 'roomId'>): void {
     const ev = { ...event, roomId: (event as RealtimeEvent).roomId ?? roomId } as RealtimeEvent
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'event', event: ev }))
+    const payload = JSON.stringify({ type: 'event', event: ev })
+
+    // Important: on initial page load, JOIN_ROOM is often fired before the WebSocket is open
+    // or before we've subscribed to the room. Queue until connected + subscribed.
+    if (this.ws?.readyState === WebSocket.OPEN && this.hasSubscribed) {
+      this.ws.send(payload)
+      return
     }
+
+    // Keep queue bounded to avoid unbounded growth if offline.
+    if (this.pendingMessages.length > 200) this.pendingMessages.shift()
+    this.pendingMessages.push(payload)
   }
 
   on(_roomId: string, handler: EventHandler): () => void {
