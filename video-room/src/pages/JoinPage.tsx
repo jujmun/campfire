@@ -24,26 +24,48 @@ function generateRoomCode(): string {
 export function JoinPage() {
   const navigate = useNavigate()
   const [roomCode, setRoomCode] = useState('')
+  const [displayName, setDisplayName] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem('campfireDisplayName') || ''
+  })
   const [error, setError] = useState<string | null>(null)
 
   const handleJoin = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
       const normalized = roomCode.trim()
+      const name = displayName.trim()
       if (!normalized) {
         setError('Please enter a room code')
         return
       }
+      if (!name) {
+        setError('Please enter your name')
+        return
+      }
       setError(null)
-      navigate(`/room/${encodeURIComponent(normalized)}`)
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('campfireDisplayName', name)
+      }
+      navigate(`/room/${encodeURIComponent(normalized)}`, {
+        state: { displayName: name },
+      })
     },
-    [roomCode, navigate]
+    [roomCode, displayName, navigate]
   )
 
   const handleCreateRoom = useCallback(() => {
+    const name = displayName.trim()
+    if (!name) {
+      setError('Please enter your name before creating a room')
+      return
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('campfireDisplayName', name)
+    }
     const code = generateRoomCode()
-    navigate(`/room/${code}`)
-  }, [navigate])
+    navigate(`/room/${code}`, { state: { displayName: name } })
+  }, [displayName, navigate])
 
   return (
     <div className="join-page">
@@ -60,10 +82,22 @@ export function JoinPage() {
         </button>
 
         <div className="join-page-divider">
-          <span>or join with code</span>
+          <span>or join an existing room</span>
         </div>
 
         <form onSubmit={handleJoin} className="join-page-form">
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => {
+              setDisplayName(e.target.value)
+              setError(null)
+            }}
+            placeholder="Your name"
+            className="join-page-input"
+            aria-label="Your name"
+            autoComplete="name"
+          />
           <input
             type="text"
             value={roomCode}

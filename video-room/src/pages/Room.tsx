@@ -28,7 +28,7 @@ function SpatialScaler({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { SpatialCanvas } from '../components/SpatialCanvas'
 import { VideoGrid } from '../components/VideoGrid'
 import { WhiteboardPanel, type WhiteboardPanelHandle, type SharedPersonalWb } from '../components/WhiteboardPanel'
@@ -54,7 +54,7 @@ const CANVAS_H = 700
 const AVATAR_COLORS = ['#8b5cf6', '#22c55e', '#3b82f6', '#ec4899', '#f97316']
 
 const MOCK_SPATIAL_AVATARS: Omit<SpatialParticipant, 'isLocal'>[] = [
-  { id: 's1', name: 'Sarah Chen', x: 150, y: 150, isMuted: false, avatarColor: AVATAR_COLORS[0] },
+  { id: 's1', name: 'Host', x: 150, y: 150, isMuted: false, avatarColor: AVATAR_COLORS[0] },
   { id: 's2', name: 'Priya S.', x: 550, y: 200, isMuted: true, avatarColor: AVATAR_COLORS[1] },
   { id: 's3', name: 'Marcus J.', x: 350, y: 350, isMuted: false, avatarColor: AVATAR_COLORS[2] },
   { id: 's4', name: 'Yuki T.', x: 150, y: 550, isMuted: false, avatarColor: AVATAR_COLORS[3] },
@@ -64,13 +64,13 @@ const MOCK_SPATIAL_AVATARS: Omit<SpatialParticipant, 'isLocal'>[] = [
   { id: 's8', name: 'Kai', x: 500, y: 950, isMuted: true, avatarColor: AVATAR_COLORS[4] },
 ]
 
-const isDemoMode = import.meta.env.VITE_DEMO_MODE !== 'false'
+const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true'
 
-function createInitialParticipants(localId: string): Map<string, SpatialParticipant> {
+function createInitialParticipants(localId: string, localName: string): Map<string, SpatialParticipant> {
   const m = new Map<string, SpatialParticipant>()
   m.set(localId, {
     id: localId,
-    name: 'Sarah Chen',
+    name: localName,
     x: CANVAS_W / 2 - 24,
     y: CANVAS_H / 2 - 24,
     isMuted: false,
@@ -86,6 +86,23 @@ function createInitialParticipants(localId: string): Map<string, SpatialParticip
 export function Room() {
   const { roomId } = useParams<{ roomId?: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  const [localUserId] = useState(() => generateClientId())
+  const [localDisplayName] = useState(() => {
+    const stateName =
+      (location.state as { displayName?: string } | null | undefined)?.displayName?.trim() || ''
+    const storedName =
+      typeof window !== 'undefined' ? window.localStorage.getItem('campfireDisplayName') || '' : ''
+    const base =
+      stateName ||
+      storedName ||
+      `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('campfireDisplayName', base)
+    }
+    return base
+  })
 
   const effectiveRoomId = roomId?.trim() || ''
 
@@ -101,9 +118,8 @@ export function Room() {
   const [layoutMode, setLayoutMode] = useState<'video' | 'screen-share'>('video')
   const [whiteboardMode, setWhiteboardMode] = useState<'screen-share' | 'draw'>('draw')
   const [screenStream] = useState<MediaStream | null>(null)
-  const [localUserId] = useState(() => generateClientId())
   const [participants, setParticipants] = useState<Map<string, SpatialParticipant>>(() =>
-    createInitialParticipants(localUserId)
+    createInitialParticipants(localUserId, localDisplayName)
   )
   const [showIpadModal, setShowIpadModal] = useState(false)
   const [roomLinkCopied, setRoomLinkCopied] = useState(false)
@@ -131,11 +147,11 @@ export function Room() {
       type: 'JOIN_ROOM',
       roomId: effectiveRoomId,
       userId: localUserId,
-      name: 'Sarah Chen',
+      name: localDisplayName,
       timestamp: Date.now(),
     })
     return () => realtime.leave()
-  }, [effectiveRoomId, localUserId])
+  }, [effectiveRoomId, localUserId, localDisplayName])
 
   useEffect(() => {
     const manager = createWebRTCManager({
@@ -259,7 +275,7 @@ export function Room() {
         type: 'PERSONAL_WB_SHARE_START',
         roomId: effectiveRoomId,
         ownerId: localUserId,
-        ownerName: 'Sarah Chen',
+        ownerName: localDisplayName,
         targetIds,
         mode: personalWbPermissionMode,
         timestamp: Date.now(),
@@ -267,7 +283,7 @@ export function Room() {
       const names = targetIds.map((id) => participants.get(id)?.name ?? id).join(', ')
       announce(`Your whiteboard is shared with ${names}`)
     },
-    [effectiveRoomId, localUserId, personalWbPermissionMode, participants, announce]
+    [effectiveRoomId, localUserId, personalWbPermissionMode, participants, announce, localDisplayName]
   )
 
   const doPersonalWbShareStop = useCallback(() => {
@@ -406,7 +422,7 @@ export function Room() {
       type: 'PERSONAL_WB_VIEW_REQUEST',
       roomId: effectiveRoomId,
       requesterId: localUserId,
-      requesterName: 'Sarah Chen',
+      requesterName: localDisplayName,
       ownerId,
       timestamp: Date.now(),
     } as PersonalWbViewRequestEvent)
@@ -414,7 +430,7 @@ export function Room() {
     setPersonalWbOpen(false)
     setPendingSharePrompt(null)
     announce(`Viewing ${ownerName}'s whiteboard`)
-  }, [pendingSharePrompt, effectiveRoomId, localUserId, participants, announce])
+  }, [pendingSharePrompt, effectiveRoomId, localUserId, participants, announce, localDisplayName])
 
   const handleNeither = useCallback(() => {
     setPendingSharePrompt(null)
@@ -511,6 +527,11 @@ export function Room() {
           <span className="room-status-item" title="Connection">Good</span>
           <span className="room-status-item" title="Participants">{participants.size}</span>
           <span className="room-status-item" title="Secure">SRTP</span>
+          {participants.size > 6 && (
+            <span className="room-status-item" title="Best with small groups">
+              Small-group beta (best with ≤ 6)
+            </span>
+          )}
           <button
             type="button"
             className={`btn-host-lock ${hostLockProximity ? 'active' : ''}`}
@@ -620,7 +641,7 @@ export function Room() {
                     <SpatialCanvas
                       roomId={effectiveRoomId}
                       localUserId={localUserId}
-                      localName="Sarah Chen"
+                      localName={localDisplayName}
                       participants={participants}
                       onParticipantsChange={setParticipants}
                       onProximityEnter={handleProximityEnter}
@@ -683,7 +704,7 @@ export function Room() {
               <div className="room-screen-share-header">
                 <h2 className="room-screen-share-title">
                   {personalWbOpen
-                    ? "You are viewing Sarah Chen's Whiteboard"
+                    ? `You are viewing ${localDisplayName}'s Whiteboard`
                     : sharedPersonalWb
                       ? `You are viewing ${sharedPersonalWb.ownerName}'s Whiteboard`
                       : screenStream
@@ -693,9 +714,16 @@ export function Room() {
               </div>
               {screenStream && !personalWbOpen && (
                 <div className="room-sharing-indicator">
-                  <span className="room-sharing-avatar">SC</span>
+                  <span className="room-sharing-avatar">
+                    {localDisplayName
+                      .split(' ')
+                      .map((part) => part[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
                   <span className="room-sharing-icon">🖥️</span>
-                  <span>Sharing: Sarah Chen's Screen</span>
+                  <span>Sharing: {localDisplayName}'s Screen</span>
                 </div>
               )}
               {personalWbOpen ? (
@@ -703,7 +731,7 @@ export function Room() {
                   <PersonalWhiteboard
                     roomId={effectiveRoomId}
                     ownerId={localUserId}
-                    ownerName="Sarah Chen"
+                    ownerName={localDisplayName}
                     isOpen
                     onClose={() => setPersonalWbOpen(false)}
                     autoShare={personalWbAutoShare}
@@ -733,7 +761,7 @@ export function Room() {
                     roomId: effectiveRoomId,
                     ownerId,
                     requesterId: localUserId,
-                    requesterName: 'Sarah Chen',
+                    requesterName: localDisplayName,
                     timestamp: Date.now(),
                   })
                   announce('Control requested')
